@@ -67,9 +67,14 @@ class PGP {
     }
 
     // check for at least one valid user id
-    const userIds = await this.parseUserIds(key.users, primaryKey, verifyDate);
+    const {userIds, status} = await this.parseUserIds(key.users, primaryKey, verifyDate);
     if (!userIds.length) {
-      util.throw(400, 'Invalid PGP key: invalid user IDs');
+      if (status == 1) {
+        util.throw(400, 'Invalid PGP key: no user ID comes from Esisar');
+      }
+      else {
+        util.throw(400, 'Invalid PGP key: invalid user IDs');
+      }
     }
 
     // get algorithm details from primary key
@@ -116,10 +121,11 @@ class PGP {
 
   /**
    * Parse an array of user ids and verify signatures
-   * @param  {Array} users   A list of openpgp.js user objects
+   * @param  {Array} users      A list of openpgp.js user objects
    * @param {Object} primaryKey The primary key packet of the key
-   * @param {Date} verifyDate Verify user IDs at this point in time
-   * @return {Array}         An array of user id objects
+   * @param {Date} verifyDate   Verify user IDs at this point in time
+   * @return {Array, integer}   An array of user id objects and a satus indicator.
+   * Values of status : 0 if no error, 1 if no address comes from Esisar.
    */
   async parseUserIds(users, primaryKey, verifyDate = new Date()) {
     if (!users || !users.length) {
@@ -127,6 +133,7 @@ class PGP {
     }
     // at least one user id must be valid, revoked or expired
     const result = [];
+    var isFromEsisar = false;
     for (const user of users) {
       const userStatus = await user.verify(primaryKey, verifyDate);
       if (userStatus !== openpgp.enums.keyStatus.invalid && user.userId && user.userId.userid) {
@@ -140,11 +147,18 @@ class PGP {
               email: util.normalizeEmail(uid.email),
               verified: false
             });
+            if(/^([a-z0-9\-.]+)@([a-z0-9.\-]*)esisar\.grenoble-inp\.fr$/.test(util.normalizeEmail(uid.email)))
+            	isFromEsisar = true;
           }
         } catch (e) {}
       }
     }
-    return result;
+    var status = 0;
+    if(!isFromEsisar){
+      result.length = 0;
+      status = 1;
+    }
+    return {userIds: result, status: status};
   }
 
   /**

@@ -91,6 +91,10 @@ class PublicKey {
       const filteredPublicKeyArmored = await this._pgp.filterKeyByUserIds(key.userIds.filter(({verified}) => verified), key.publicKeyArmored);
       // update verified key with new key
       key.publicKeyArmored = await this._pgp.updateKey(verified.publicKeyArmored, filteredPublicKeyArmored);
+      // send mails to verify all user ids
+      await this._sendVerifyEmail(key, origin, ctx);
+      // store key in database 
+      await this._persistKey(key);
     } else {
       key.userIds = key.userIds.filter(userId => userId.status === KEY_STATUS_VALID);
       if (!key.userIds.length) {
@@ -99,11 +103,11 @@ class PublicKey {
       await this._addKeyArmored(key.userIds, key.publicKeyArmored);
       // new key, set armored to null
       key.publicKeyArmored = null;
+      // send mails to verify organisation's user ids
+      await this._sendVerifyOrganisationEmail(key, origin, ctx);
+      // store key in database
+      await this._persistKeyOrganisation(key);
     }
-    // send mails to verify user ids
-    await this._sendVerifyEmail(key, origin, ctx);
-    // store key in database
-    await this._persistKey(key);
   }
 
   /**
@@ -175,6 +179,24 @@ class PublicKey {
       }
     }
   }
+  
+  /**
+   * Send verification emails to the organisation's public keys user ids for verification.
+   * If a primary email address is provided only one email will be sent.
+   * @param {Array}  userIds            user id documents containg the verification nonces
+   * @param {Object} origin             the server's origin (required for email links)
+   * @param {Object} ctx                Context
+   * @return {Promise}
+   */
+  async _sendVerifyOrganisationEmail({userIds, keyId}, origin, ctx) {
+    for (const userId of userIds) {
+      if (userId.notify && userId.notify === true && util.isFromOrganisation(userId.email)) {
+        // generate nonce for verification
+        userId.nonce = util.random();
+        await this._email.send({template: tpl.verifyKey.bind(null, ctx), userId, keyId, origin, publicKeyArmored: userId.publicKeyArmored});
+      }
+    }
+  }
 
   /**
    * Persist the public key and its user ids in the database.
@@ -184,7 +206,7 @@ class PublicKey {
   async _persistKey(key) {
     // delete old/unverified key
     await this._mongo.remove({keyId: key.keyId}, DB_TYPE);
-    // generate nonces for verification
+    
     for (const userId of key.userIds) {
       // remove status from user
       delete userId.status;
@@ -197,26 +219,61 @@ class PublicKey {
       util.throw(500, 'Failed to persist key');
     }
   }
+  
+  /**
+   * Persist the public key and its user ids in the database.
+   * Mark all uids as unprocessed, except the ones with the organisation email.
+   * @param {Object} key   public key parameters
+   * @return {Promise}
+   */
+  async _persistKeyOrganisation(key) {
+    // delete old/unverified key
+    await this._mongo.remove({keyId: key.keyId}, DB_TYPE);
+    
+    for (const userId of key.userIds) {
+      if(util.isFromOrganisation(userId.email))
+      {      
+	    // remove status from user
+	    delete userId.status;
+	    // remove notify flag from user
+	    delete userId.notify;
+      }
+    }
+    // persist new key
+    const r = await this._mongo.create(key, DB_TYPE);
+    if (r.insertedCount !== 1) {
+      util.throw(500, 'Failed to persist key');
+    }
+  }
 
   /**
    * Verify a user id by proving knowledge of the nonce.
    * @param {string} keyId   Correspronding public key id
    * @param {string} nonce   The verification nonce proving email address ownership
+   * @param {Object} origin             the server's origin (required for email links)
+   * @param {Object} ctx                Context
    * @return {Promise}       The email that has been verified
    */
-  async verify({keyId, nonce}) {
+  async verify({keyId, nonce}, origin, ctx) {
     // look for verification nonce in database
     const query = {keyId, 'userIds.nonce': nonce};
     const key = await this._mongo.get(query, DB_TYPE);
     if (!key) {
       util.throw(404, 'User ID not found');
     }
+    
+    // send mails to verify all unnotified user ids
+    await this._sendVerifyEmail(key, origin, ctx);
+    // store key in database 
+    await this._persistKey(key);
+    
     await this._removeKeysWithSameEmail(key, nonce);
     let {publicKeyArmored, email} = key.userIds.find(userId => userId.nonce === nonce);
     // update armored key
     if (key.publicKeyArmored) {
       publicKeyArmored = await this._pgp.updateKey(key.publicKeyArmored, publicKeyArmored);
     }
+    
     // flag the user id as verified
     await this._mongo.update(query, {
       publicKeyArmored,

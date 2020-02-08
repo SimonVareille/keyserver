@@ -79,6 +79,19 @@ exports.isEmail = function(data) {
 };
 
 /**
+ * Checks for a valid specific organisation email address.
+ * @param  {string} data   The email address
+ * @return {boolean}       Wether the email address comes from organisation
+ */
+exports.isFromOrganisation = function(data) {
+  if (!this.isString(data)) {
+    return false;
+  }
+  const re = /^([a-z0-9\-.]+)@([a-z0-9.\-]*)esisar\.grenoble-inp\.fr$/;
+  return re.test(data);
+};
+
+/**
  * Normalize email address to lowercase.
  * @param  {string} email   The email address
  * @return {string}       lowercase email address

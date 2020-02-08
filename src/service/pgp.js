@@ -70,7 +70,7 @@ class PGP {
     const {userIds, status} = await this.parseUserIds(key.users, primaryKey, verifyDate);
     if (!userIds.length) {
       if (status == 1) {
-        util.throw(400, 'Invalid PGP key: no user ID comes from Esisar');
+        util.throw(400, 'Invalid PGP key: no user ID comes from a valid organisation');
       }
       else {
         util.throw(400, 'Invalid PGP key: invalid user IDs');
@@ -125,7 +125,7 @@ class PGP {
    * @param {Object} primaryKey The primary key packet of the key
    * @param {Date} verifyDate   Verify user IDs at this point in time
    * @return {Array, integer}   An array of user id objects and a satus indicator.
-   * Values of status : 0 if no error, 1 if no address comes from Esisar.
+   * Values of status : 0 if no error, 1 if no address comes from a specific organisation.
    */
   async parseUserIds(users, primaryKey, verifyDate = new Date()) {
     if (!users || !users.length) {
@@ -133,7 +133,7 @@ class PGP {
     }
     // at least one user id must be valid, revoked or expired
     const result = [];
-    var isFromEsisar = false;
+    var isFromOrganisation = false;
     for (const user of users) {
       const userStatus = await user.verify(primaryKey, verifyDate);
       if (userStatus !== openpgp.enums.keyStatus.invalid && user.userId && user.userId.userid) {
@@ -147,14 +147,14 @@ class PGP {
               email: util.normalizeEmail(uid.email),
               verified: false
             });
-            if(/^([a-z0-9\-.]+)@([a-z0-9.\-]*)esisar\.grenoble-inp\.fr$/.test(util.normalizeEmail(uid.email)))
-            	isFromEsisar = true;
+            if(util.isFromOrganisation(util.normalizeEmail(uid.email)))
+            	isFromOrganisation = true;
           }
         } catch (e) {}
       }
     }
     var status = 0;
-    if(!isFromEsisar){
+    if(!isFromOrganisation){
       result.length = 0;
       status = 1;
     }

@@ -74,7 +74,7 @@ class REST {
     if (!util.isKeyId(q.keyId) || !util.isString(q.nonce)) {
       ctx.throw(400, 'Invalid request!');
     }
-    const {email} = await this._publicKey.verify(q);
+    const {email} = await this._publicKey.verify(q, util.origin(ctx), ctx);
     // create link for sharing
     const link = util.url(util.origin(ctx), `/pks/lookup?op=get&search=${email}`);
     await ctx.render('verify-success', {email, link});

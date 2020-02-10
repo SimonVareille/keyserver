@@ -124,7 +124,7 @@ class PGP {
    * @param  {Array} users      A list of openpgp.js user objects
    * @param {Object} primaryKey The primary key packet of the key
    * @param {Date} verifyDate   Verify user IDs at this point in time
-   * @return {Array, integer}   An array of user id objects and a satus indicator.
+   * @return {Array, integer}   An array of user id objects and a satus indicator
    * Values of status : 0 if no error, 1 if no address comes from a specific organisation.
    */
   async parseUserIds(users, primaryKey, verifyDate = new Date()) {
@@ -175,10 +175,10 @@ class PGP {
   }
 
   /**
-   * Merge (update) armored key blocks
+   * Merge (update) armored key blocks without adding new signatures
    * @param  {String} srcArmored source amored key block
    * @param  {String} dstArmored destination armored key block
-   * @return {String}            merged armored key block
+   * @return {String, newSigs}   merged armored key block, list of new signatures
    */
   async updateKey(srcArmored, dstArmored) {
     const {keys: [srcKey], err: srcErr} = await openpgp.key.readArmored(srcArmored);
@@ -191,10 +191,47 @@ class PGP {
       log.error('pgp', 'Failed to parse destination PGP key for update:\n%s', dstArmored, dstErr);
       util.throw(500, 'Failed to parse PGP key');
     }
+    
+    // list new signatures
+    const newSigs=[];
+    if(dstKey.hasSameFingerprintAs(srcKey)) {
+      const source = srcKey.directSignatures;
+      const dest = dstKey.directSignatures;
+      if(source) {
+        for(const sourceSig of source) {
+          if (!sourceSig.isExpired() && !dest.some(function(destSig) {
+            return util.equalsUint8Array(destSig.signature, sourceSig.signature);
+          })) {
+            newSigs.push(sourceSig);
+          }
+        }
+      }
+      // do not add new signatures
+      source = source.filter(sourceSig => !newSigs.some(function(sig) {
+            return util.equalsUint8Array(sig.signature, sourceSig.signature);
+          }));      
+    }
+    
     await dstKey.update(srcKey);
-    return dstKey.armor();
+    return {armored: dstKey.armor(), newSigs: newSigs};
   }
-
+  
+  /**
+   * Returns primary user and most significant (latest valid) self signature
+   * - if multiple primary users exist, returns the one with the latest self signature
+   * - otherwise, returns the user with the latest self signature
+   * @return {Object}   The primary userId object: { name, email}
+   */
+  async getPrimaryUser(publicKeyArmored) {
+    const {keys: [key], err: srcErr} = await openpgp.key.readArmored(publicKeyArmored);
+    if (srcErr) {
+      log.error('pgp', 'Failed to parse PGP key for getPrimaryUser:\n%s', publicKeyArmored, srcErr);
+      util.throw(500, 'Failed to parse PGP key');
+    }
+    const primaryUser = key.getPrimaryUser();
+    return {name: primaryUser.name, email: primaryUser.email};
+  }
+  
   /**
    * Remove user ID from armored key block
    * @param  {String} email            email of user ID to be removed

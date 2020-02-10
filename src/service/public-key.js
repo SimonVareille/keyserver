@@ -89,10 +89,21 @@ class PublicKey {
       key.userIds = await this._mergeUsers(verified.userIds, key.userIds, key.publicKeyArmored);
       // reduce new key to verified user IDs
       const filteredPublicKeyArmored = await this._pgp.filterKeyByUserIds(key.userIds.filter(({verified}) => verified), key.publicKeyArmored);
-      // update verified key with new key
-      key.publicKeyArmored = await this._pgp.updateKey(verified.publicKeyArmored, filteredPublicKeyArmored);
+      // update verified key with new key and get new signatures
+      let newSigs = [];
+      {armored: key.publicKeyArmored, newSigs: newSigs} = await this._pgp.updateKey(verified.publicKeyArmored, filteredPublicKeyArmored);
+      // store pending signatures in key and generate nounce for confirmation
+      if(!key.pendingSignatures)
+        key.pendingSignatures = {sigs: newSigs, nonce: util.random()};
+      else {
+        key.pendingSignatures = key.pendingSignatures.concat(newSigs.filter(sourceSig => !key.pendingSignatures.some(function(sig) {
+            return util.equalsUint8Array(sig.signature, sourceSig.signature);
+          })));
+      }
       // send mails to verify all user ids
       await this._sendVerifyEmail(key, origin, ctx);
+      // send mail to confirm all new signatures
+      await this._sendNewSigsEmail(key, origin, ctx);
       // store key in database 
       await this._persistKey(key);
     } else {
@@ -175,7 +186,7 @@ class PublicKey {
       if (userId.notify && userId.notify === true) {
         // generate nonce for verification
         userId.nonce = util.random();
-        await this._email.send({template: tpl.verifyKey.bind(null, ctx), userId, keyId, origin, publicKeyArmored: userId.publicKeyArmored});
+        await this._email.send({template: tpl.verifyKey.bind(null, ctx), userId, keyId, userId, origin, publicKeyArmored: userId.publicKeyArmored});
       }
     }
   }
@@ -193,14 +204,29 @@ class PublicKey {
       if (userId.notify && userId.notify === true && util.isFromOrganisation(userId.email)) {
         // generate nonce for verification
         userId.nonce = util.random();
-        await this._email.send({template: tpl.verifyKey.bind(null, ctx), userId, keyId, origin, publicKeyArmored: userId.publicKeyArmored});
+        await this._email.send({template: tpl.verifyKey.bind(null, ctx), userId, keyId, userId, origin, publicKeyArmored: userId.publicKeyArmored});
       }
+    }
+  }
+  
+  /**
+   * Send confirmation email to the public keys primary user ids for confirmation
+   * of new signatures addition.
+   * @param {Object} key    key documents containg all the needed data
+   * @param {Object} origin the server's origin (required for email links)
+   * @param {Object} ctx    Context
+   * @return {Promise}
+   */
+  async _sendNewSigsEmail(key, origin, ctx) {
+    if(key.pendingSignatures.sigs.length){
+      const primaryUser = this._pgp.getPrimaryUser(key.publicKeyArmored);
+      await this._email.send({template: tpl.confirmNewSigs.bind(null, ctx), primaryUser, key.keyId, {name: primaryUser.name, sigsNb: key.pendingSignatures.sigs.length, nonce: key.pendingSignatures.nonce}, origin, publicKeyArmored: key.publicKeyArmored});
     }
   }
 
   /**
    * Persist the public key and its user ids in the database.
-   * @param {Object} key   public key parameters
+   * @param {Object} key        public key parameters
    * @return {Promise}
    */
   async _persistKey(key) {
@@ -271,7 +297,7 @@ class PublicKey {
     let {publicKeyArmored, email} = key.userIds.find(userId => userId.nonce === nonce);
     // update armored key
     if (key.publicKeyArmored) {
-      publicKeyArmored = await this._pgp.updateKey(key.publicKeyArmored, publicKeyArmored);
+      publicKeyArmored = await this._pgp.updateKey(key.publicKeyArmored, publicKeyArmored).armored;
     }
     
     // flag the user id as verified
@@ -383,7 +409,7 @@ class PublicKey {
     // send verification mails
     keyId = key.keyId; // get keyId in case request was by email
     for (const userId of key.userIds) {
-      await this._email.send({template: tpl.verifyRemove.bind(null, ctx), userId, keyId, origin});
+      await this._email.send({template: tpl.verifyRemove.bind(null, ctx), userId, keyId, userId, origin});
     }
   }
 

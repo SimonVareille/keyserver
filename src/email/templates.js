@@ -18,4 +18,12 @@ function verifyRemove(ctx, {name, email, nonce, origin, keyId}) {
   };
 }
 
-module.exports = {verifyKey, verifyRemove};
+function confirmNewSigs(ctx, {name, sigsNb, nonce, origin, keyId}) {
+  const link = `${util.url(origin)}/api/v1/key?op=confirmSignatures&keyId=${keyId}&nonce=${nonce}`;
+  return {
+    subject: ctx.__('confirm_signatures_subject'),
+    text: ctx.__('confirm_signatures_text', [name, sigsNb, link, origin.host])
+  };
+}
+
+module.exports = {verifyKey, verifyRemove, confirmNewSigs};

@@ -131,7 +131,7 @@ exports.normalizeEmail = function(email) {
  * @param {Uint8Array} second array
  * @returns {Boolean} equality
  */
-exports.equalsUint8Array: function (array1, array2) {
+exports.equalsUint8Array = function (array1, array2) {
   try {
     if (array1.length !== array2.length) {
       return false;

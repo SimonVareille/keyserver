@@ -36,29 +36,7 @@ exports.isString = function(data) {
 exports.isTrue = function(data) {
   if (this.isString(data)) {
     return data === 'true';
-  } else /**
-   * Check Uint8Array equality
-   * @param {Uint8Array} first array
-   * @param {Uint8Array} second array
-   * @returns {Boolean} equality
-   */
-  equalsUint8Array: function (array1, array2) {
-    if (!util.isUint8Array(array1) || !util.isUint8Array(array2)) {
-      throw new Error('Data must be in the form of a Uint8Array');
-    }
-
-    if (array1.length !== array2.length) {
-      return false;
-    }
-
-    for (let i = 0; i < array1.length; i++) {
-      if (array1[i] !== array2[i]) {
-        return false;
-      }
-    }
-    return true;
-  },
-{
+  } else {
     return Boolean(data);
   }
 };

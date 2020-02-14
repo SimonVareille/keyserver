@@ -173,12 +173,59 @@ class PGP {
     key.users = key.users.filter(({userId}) => !userId || emails.includes(util.normalizeEmail(userId.email)));
     return key.armor();
   }
+  
+  /**
+   * Remove signatures from source armored key which are not in compared armored key
+   * @param  {String} srcArmored armored key block to be filtered
+   * @param  {String} cmpArmored armored key block to be compare with
+   * @return {String, newSigs}   filterd armored key block, list of new signatures
+   */
+  async filterKeyBySignatures(srcArmored, cmpArmored) {
+    const {keys: [srcKey], err: srcErr} = await openpgp.key.readArmored(srcArmored);
+    if (srcErr) {
+      log.error('pgp', 'Failed to parse source PGP key:\n%s', srcArmored, srcErr);
+      util.throw(500, 'Failed to parse PGP key');
+    }
+    const {keys: [cmpKey], err: cmpErr} = await openpgp.key.readArmored(cmpArmored);
+    if (cmpErr) {
+      log.error('pgp', 'Failed to parse destination PGP key:\n%s', cmpArmored, cmpErr);
+      util.throw(500, 'Failed to parse PGP key');
+    }
+    
+    const newSigs=[];
+    if(cmpKey.hasSameFingerprintAs(srcKey)) {
+      await Promise.all(srcKey.users.map(async srcUser => {
+        await Promise.all(cmpKey.users.map(async dstUser => {
+          if ((srcUser.userId && dstUser.userId &&
+             (srcUser.userId.userid === dstUser.userId.userid)) ||
+             (srcUser.userAttribute && (srcUser.userAttribute.equals(dstUser.userAttribute)))) {
+            const source = srcUser.otherCertifications;
+            const dest = dstUser.otherCertifications;
+            for(let i = source.length-1; i >= 0; i--) {
+              const sourceSig = source[i];
+              if (!sourceSig.isExpired() && !dest.some(function(destSig) {
+                return util.equalsUint8Array(destSig.signature, sourceSig.signature);
+              })) {
+                // list new signatures
+                let userId = (srcUser.userId) ? srcUser.userId.userid : null; 
+                let userAttribute = (srcUser.userAttribute) ? srcUser.userAttribute : null;
+                newSigs.push({user: {userId: userId, userAttribute: userAttribute}, signature: sourceSig});
+                // do not add new signatures
+                source.splice(i, 1);
+              }
+            }
+          }
+        }));
+      }));
+    }
+    return {armored: srcKey.armor(), newSigs: newSigs};
+  }
 
   /**
    * Merge (update) armored key blocks without adding new signatures
    * @param  {String} srcArmored source amored key block
    * @param  {String} dstArmored destination armored key block
-   * @return {String, newSigs}   merged armored key block, list of new signatures
+   * @return {String}            merged amored key block
    */
   async updateKey(srcArmored, dstArmored) {
     const {keys: [srcKey], err: srcErr} = await openpgp.key.readArmored(srcArmored);
@@ -190,37 +237,16 @@ class PGP {
     if (dstErr) {
       log.error('pgp', 'Failed to parse destination PGP key for update:\n%s', dstArmored, dstErr);
       util.throw(500, 'Failed to parse PGP key');
-    }
-    
-    // list new signatures
-    const newSigs=[];
-    if(dstKey.hasSameFingerprintAs(srcKey)) {
-      const source = srcKey.directSignatures;
-      const dest = dstKey.directSignatures;
-      if(source) {
-        for(const sourceSig of source) {
-          if (!sourceSig.isExpired() && !dest.some(function(destSig) {
-            return util.equalsUint8Array(destSig.signature, sourceSig.signature);
-          })) {
-            newSigs.push(sourceSig);
-          }
-        }
-      }
-      // do not add new signatures
-      source = source.filter(sourceSig => !newSigs.some(function(sig) {
-            return util.equalsUint8Array(sig.signature, sourceSig.signature);
-          }));      
-    }
-    
+    }    
     await dstKey.update(srcKey);
-    return {armored: dstKey.armor(), newSigs: newSigs};
+    return dstKey.armor();
   }
   
   /**
    * Returns primary user and most significant (latest valid) self signature
    * - if multiple primary users exist, returns the one with the latest self signature
    * - otherwise, returns the user with the latest self signature
-   * @return {Object}   The primary userId object: { name, email}
+   * @return {Object}   The primary userId
    */
   async getPrimaryUser(publicKeyArmored) {
     const {keys: [key], err: srcErr} = await openpgp.key.readArmored(publicKeyArmored);
@@ -228,8 +254,8 @@ class PGP {
       log.error('pgp', 'Failed to parse PGP key for getPrimaryUser:\n%s', publicKeyArmored, srcErr);
       util.throw(500, 'Failed to parse PGP key');
     }
-    const primaryUser = key.getPrimaryUser();
-    return {name: primaryUser.name, email: primaryUser.email};
+    const primaryUser = await key.getPrimaryUser();
+    return primaryUser;
   }
   
   /**

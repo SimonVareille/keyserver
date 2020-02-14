@@ -88,18 +88,25 @@ class PublicKey {
     if (verified) {
       key.userIds = await this._mergeUsers(verified.userIds, key.userIds, key.publicKeyArmored);
       // reduce new key to verified user IDs
-      const filteredPublicKeyArmored = await this._pgp.filterKeyByUserIds(key.userIds.filter(({verified}) => verified), key.publicKeyArmored);
-      // update verified key with new key and get new signatures
-      const {armored, newSigs} = await this._pgp.updateKey(verified.publicKeyArmored, filteredPublicKeyArmored);
-      key.publicKeyArmored = armored;
+      let filteredPublicKeyArmored = await this._pgp.filterKeyByUserIds(key.userIds.filter(({verified}) => verified), key.publicKeyArmored);
+      // reduce new key to verified signatures and get new signatures
+      const {armored, newSigs} = await this._pgp.filterKeyBySignatures(filteredPublicKeyArmored, verified.publicKeyArmored);
+      filteredPublicKeyArmored = armored;
+      // update verified key with new key
+      key.publicKeyArmored = await this._pgp.updateKey(verified.publicKeyArmored, filteredPublicKeyArmored);
       // store pending signatures in key and generate nounce for confirmation
-      if(!key.pendingSignatures)
-        key.pendingSignatures = {sigs: newSigs, nonce: util.random()};
-      else {
-        key.pendingSignatures = key.pendingSignatures.concat(newSigs.filter(sourceSig => !key.pendingSignatures.some(function(sig) {
-            return util.equalsUint8Array(sig.signature, sourceSig.signature);
-          })));
+      if(newSigs.length) {
+        await this._formatArrays(newSigs);
+        if(!verified.pendingSignatures)
+          key.pendingSignatures = {sigs: newSigs, nonce: util.random()};
+        else {
+          key.pendingSignatures = verified.pendingSignatures;
+          key.pendingSignatures.sigs = verified.pendingSignatures.sigs.concat(newSigs.filter(sourceSig => !verified.pendingSignatures.sigs.some(function(pendingSig) {
+              return pendingSig.signature.signature === sourceSig.signature.signature;
+            })));
+        }
       }
+      
       // send mails to verify all user ids
       await this._sendVerifyEmail(key, origin, ctx);
       // send mail to confirm all new signatures
@@ -172,6 +179,21 @@ class PublicKey {
   _includeEmail(users, user) {
     return users.find(({email}) => email === user.email);
   }
+  
+  /**
+   * Convert all Uint8Array in every signatures to base64.
+   * @param {Array} signatures  list of signatures to convert
+   * @return {Promise}
+   */
+  async _formatArrays(signatures) {
+  	signatures.map(function(sig) {
+  	  const signature = sig.signature;
+  	  signature.signatureData = util.base64EncArr(signature.signatureData);
+  	  signature.signedHashValue = util.base64EncArr(signature.signedHashValue);
+  	  signature.issuerFingerprint = util.base64EncArr(signature.issuerFingerprint);
+  	  signature.signature = util.base64EncArr(signature.signature);
+   	});
+  }
 
   /**
    * Send verification emails to the public keys user ids for verification.
@@ -218,9 +240,10 @@ class PublicKey {
    * @return {Promise}
    */
   async _sendNewSigsEmail(key, origin, ctx) {
-    if(key.pendingSignatures.sigs.length){
-      const primaryUser = this._pgp.getPrimaryUser(key.publicKeyArmored);
-      await this._email.send({template: tpl.confirmNewSigs.bind(null, ctx), primaryUser, keyId: key.keyId, data: {name: primaryUser.name, sigsNb: key.pendingSignatures.sigs.length, nonce: key.pendingSignatures.nonce}, origin, publicKeyArmored: key.publicKeyArmored});
+    if(key.pendingSignatures && key.pendingSignatures.sigs.length){
+      let primaryUser = await this._pgp.getPrimaryUser(key.publicKeyArmored);
+      const userId = primaryUser.user.userId;
+      await this._email.send({template: tpl.confirmNewSigs.bind(null, ctx), userId, keyId: key.keyId, data: {name: userId.name, sigsNb: key.pendingSignatures.sigs.length, nonce: key.pendingSignatures.nonce}, origin, publicKeyArmored: key.publicKeyArmored});
     }
   }
 
@@ -297,7 +320,7 @@ class PublicKey {
     let {publicKeyArmored, email} = key.userIds.find(userId => userId.nonce === nonce);
     // update armored key
     if (key.publicKeyArmored) {
-      publicKeyArmored = await this._pgp.updateKey(key.publicKeyArmored, publicKeyArmored).armored;
+      publicKeyArmored = await this._pgp.updateKey(key.publicKeyArmored, publicKeyArmored);
     }
     
     // flag the user id as verified
@@ -386,6 +409,8 @@ class PublicKey {
       email: uid.email,
       verified: uid.verified
     }));
+    if(key.pendingSignatures)
+      delete key.pendingSignatures.nonce
     return key;
   }
 

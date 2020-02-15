@@ -18,6 +18,7 @@
 'use strict';
 
 const crypto = require('crypto');
+const config = require('config');
 
 /**
  * Checks for a valid string
@@ -87,7 +88,7 @@ exports.isFromOrganisation = function(data) {
   if (!this.isString(data)) {
     return false;
   }
-  const re = /^([a-z0-9\-.]+)@([a-z0-9.\-]*)esisar\.grenoble-inp\.fr$/;
+  const re = new RegExp(config.publicKey.restrictionRegEx, 'g');
   return re.test(data);
 };
 

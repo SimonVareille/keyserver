@@ -22,6 +22,11 @@ module.exports = {
       name: 'OpenPGP Key Server',
       email: 'user@gmail.com'
     }
+  },
+  
+  publicKey: {
+    restrictUserOrigin: true,
+    restrictionRegEx: '^([a-z0-9\-.]+)@([a-z0-9.\-]*)esisar\.grenoble-inp\.fr$'
   }
 
 };

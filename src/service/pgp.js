@@ -19,6 +19,7 @@
 
 const log = require('winston');
 const util = require('./util');
+const config = require('config');
 const openpgp = require('openpgp');
 
 const KEY_BEGIN = '-----BEGIN PGP PUBLIC KEY BLOCK-----';
@@ -154,7 +155,7 @@ class PGP {
       }
     }
     var status = 0;
-    if(!isFromOrganisation){
+    if(config.publicKey.restrictUserOrigin && !isFromOrganisation ){
       result.length = 0;
       status = 1;
     }

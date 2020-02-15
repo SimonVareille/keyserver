@@ -41,7 +41,9 @@ module.exports = {
   },
 
   publicKey: {
-    purgeTimeInDays: process.env.PUBLIC_KEY_PURGE_TIME || 30
+    purgeTimeInDays: process.env.PUBLIC_KEY_PURGE_TIME || 30,
+    restrictUserOrigin: process.env.RESTRICT_USER_ORIGIN || false,
+    restrictionRegEx: process.env.RESTRICTION_REGEX
   }
 
 };

@@ -103,10 +103,18 @@ class PublicKey {
       await this._addKeyArmored(key.userIds, key.publicKeyArmored);
       // new key, set armored to null
       key.publicKeyArmored = null;
-      // send mails to verify organisation's user ids
-      await this._sendVerifyOrganisationEmail(key, origin, ctx);
-      // store key in database
-      await this._persistKeyOrganisation(key);
+      if(config.publicKey.restrictUserOrigin) {
+        // send mails to verify organisation's user ids
+        await this._sendVerifyOrganisationEmail(key, origin, ctx);
+        // store key in database
+        await this._persistKeyOrganisation(key);
+      }
+      else {
+        // send mails to verify all user ids
+        await this._sendVerifyEmail(key, origin, ctx);
+        // store key in database 
+        await this._persistKey(key);
+      }
     }
   }
 

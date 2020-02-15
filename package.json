@@ -21,6 +21,7 @@
     "release:archive": "zip -rq release.zip package.json package-lock.json node_modules/ *.js src/ config/ locales/"
   },
   "dependencies": {
+    "chroot": "1.0.10",
     "co-body": "6.0.0",
     "config": "3.2.2",
     "koa": "2.7.0",
@@ -32,7 +33,7 @@
     "nodemailer": "6.3.0",
     "openpgp": "4.5.5",
     "winston": "3.2.1",
-    "winston-papertrail": "1.0.5"
+    "winston-papertrail": "1.0.5",
   },
   "devDependencies": {
     "bootstrap": "^3.4.1",

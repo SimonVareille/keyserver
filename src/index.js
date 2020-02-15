@@ -20,12 +20,23 @@
 const log = require('winston');
 const config = require('config');
 const init = require('./app');
+const chroot = require('chroot');
 
 (async () => {
   try {
     const app = await init();
     app.listen(config.server.port, "localhost");
-    log.info('app', `Listening on http://localhost:${config.server.port}`);
+    log.info('app', `Listening on http://localhost:${config.server.port}`, function(err) {
+      if (err) { throw err; }
+ 
+      try {
+        chroot('/var/empty', 'test');
+        console.log('changed root to "/var/empty" and user to "test"');
+      } catch(err) {
+        console.error('changing root or user failed', err);
+        process.exit(1);
+      }
+    });
   } catch (err) {
     log.error('app', 'Initialization failed!', err);
   }

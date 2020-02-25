@@ -196,7 +196,7 @@ class PublicKey {
   async _formatArrays(signatures) {
   	signatures.map(function(sig) {
   	  const signature = sig.signature;
-  	  const attributes = ['signatureData', 'unhashedSubpackets', 'signedHashValue', 'issuerFingerprint', 'signature', ];
+  	  const attributes = ['signatureData', 'unhashedSubpackets', 'signedHashValue', 'preferredSymmetricAlgorithms', 'revocationKeyFingerprint', 'preferredHashAlgorithms', 'preferredCompressionAlgorithms', 'keyServerPreferences', 'keyFlags', 'features', 'issuerFingerprint', 'preferredAeadAlgorithms', 'signature'];
       for (const attrib of attributes) {
         if(signature[attrib] != null)
           signature[attrib] = Buffer.from(signature[attrib]).toString('base64');

@@ -1,0 +1,48 @@
+<style type="text/css">
+ 
+ .uid { color: green; text-decoration: underline; }
+ .warn { color: red; font-weight: bold; }
+ 
+</style>
+<div class="container">
+
+  <div class="header clearfix">
+    <nav>
+      <ul class="nav nav-pills pull-right">
+        <li role="presentation"><a href="/">Home</a></li>
+        <li role="presentation"><a href="/manage.html">Manage Keys</a></li>
+        <li role="presentation"><a href="https://github.com/mailvelope/keyserver" target="_blank">GitHub</a></li>
+      </ul>
+    </nav>
+    <h3 class="text-muted">Mailvelope Key Server</h3>
+  </div>
+
+  <div class="row marketing">
+    <div id="signatures" class="col-lg-12">
+      <h2>Select the signatures you want to add to your key</h2>
+      <div class="alert alert-success hidden" role="alert">
+        <strong>Success!</strong> <span></span>
+      </div>
+      <div class="alert alert-danger hidden" role="alert">
+        <strong>Error!</strong> <span></span>
+      </div>
+      <form id="sigForm" action="/api/v1/key" method="post"> <!-- <%= link %> -->
+<hr /><pre><strong>pub</strong> <a href="/pks/lookup?op=get&search=0x<%= keyId %>">0x<%= keyId %></a><input type="hidden" id="op" name="op" value="confirmSignatures"><input type="hidden" id="keyId" name="keyId" value="<%= keyId %>"><input type="hidden" id="nonce" name="nonce" value="<%= nonce %>"> 
+<% for(const [userid, signatures] of sigs) { %>
+<strong>uid</strong> <span class="uid"><%= userid %></span>
+<% for(sig of signatures) { %>
+&emsp;<input type="checkbox" id="<%= sig.hash %>" name="sig" value="<%= sig.hash %>"> <label for="<%= sig.hash %>"> <a href="/pks/lookup?op=get&search=0x<%= sig.issuerFingerprint %>">0x<%= sig.issuerFingerprint %></a> <%= sig.created %> <%= sig.userId %></label><br>
+<% } %>
+<% } %>
+</pre>
+        <input class="btn btn-primary btn-lg" type="submit" value="Confirm selected signatures (and delete unselected ones)">
+      </form>
+    </div> <!-- /col-lg-12 -->
+  </div> <!-- /row marketing -->
+
+  <%- include('footer') %>
+
+</div> <!-- /container -->
+
+<script src="/js/jquery.min.js"></script>
+<script src="/js/verify-certs.js"></script>

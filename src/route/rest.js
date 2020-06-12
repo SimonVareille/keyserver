@@ -32,13 +32,26 @@ class REST {
   constructor(publicKey) {
     this._publicKey = publicKey;
   }
-
+  
+  /**
+   * http POST handler
+   * @param  {Object} ctx   The koa request/response context
+   */
+  async postHandler(ctx) {
+    const json = await parse.json(ctx, {limit: '1mb'});
+    if(json.op === 'confirmSignatures')
+      return this[json.op](ctx, json);//delegate operation
+    
+    await this.create(ctx, json);
+  }
+  
   /**
    * Public key / user ID upload via http POST
    * @param  {Object} ctx   The koa request/response context
+   * @param  {Object} json  The json content of the request
    */
-  async create(ctx) {
-    const {emails, publicKeyArmored} = await parse.json(ctx, {limit: '1mb'});
+  async create(ctx, json) {
+    const {emails, publicKeyArmored} = json || await parse.json(ctx, {limit: '1mb'});
     if (!publicKeyArmored) {
       ctx.throw(400, 'Invalid request!');
     }
@@ -54,7 +67,8 @@ class REST {
    */
   async query(ctx) {
     const op = ctx.query.op;
-    if (op === 'verify' || op ===  'verifyRemove') {
+    if (op === 'verify' || op ===  'verifyRemove' || op === 'confirmSignatures' ||
+        op === 'checkSignatures') {
       return this[op](ctx); // delegate operation
     }
     // do READ if no 'op' provided
@@ -79,7 +93,38 @@ class REST {
     const link = util.url(util.origin(ctx), `/pks/lookup?op=get&search=${email}`);
     await ctx.render('verify-success', {email, link});
   }
-
+  
+  /**
+   * Check public key's signatures via http GET
+   * @param  {Object} ctx   The koa request/response context
+   */
+  async checkSignatures(ctx) {
+    const q = {keyId: ctx.query.keyId, nonce: ctx.query.nonce};
+    if (!util.isKeyId(q.keyId) || !util.isString(q.nonce)) {
+      ctx.throw(400, 'Invalid request!');
+    }
+    
+    const sigs = await this._publicKey.getPendingSignatures(q, ctx);
+    // create link for confirmation
+    const link = util.url(util.origin(ctx), `/api/v1/key`);
+    await ctx.render('verify-certs', {keyId: q.keyId, link, nonce: q.nonce, sigs});
+  }
+  
+  /**
+   * Confirm public key's signatures via http POST
+   * @param  {Object} ctx   The koa request/response context
+   * @param  {Object} json  The json content of the request
+   */
+  async confirmSignatures(ctx, json) {
+    const post = json || await parse.json(ctx, {limit: '1mb'});
+    const q = {keyId: post.keyId, nonce: post.nonce, sigs: post.sig};
+    const {email} = await this._publicKey.verifySignatures(q, util.origin(ctx), ctx);
+    // create link for sharing
+    const link = util.url(util.origin(ctx), `/pks/lookup?op=get&search=${email}`);
+    ctx.body = `Update successful. You can find your key <a href="${link}" target="_blank">here</a>.`;
+    ctx.status = 201;
+  }
+  
   /**
    * Request public key removal via http DELETE
    * @param  {Object} ctx   The koa request/response context

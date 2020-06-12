@@ -125,7 +125,7 @@ class PGP {
    * @param  {Array} users   A list of openpgp.js user objects
    * @param {Object} primaryKey The primary key packet of the key
    * @param {Date} verifyDate   Verify user IDs at this point in time
-   * @return {Array, integer}   An array of user id objects and a satus indicator.
+   * @return {Array, integer}   An array of user id objects and a satus indicator
    * Values of status : 0 if no error, 1 if no address comes from a specific organisation.
    */
   async parseUserIds(users, primaryKey, verifyDate = new Date()) {
@@ -174,12 +174,59 @@ class PGP {
     key.users = key.users.filter(({userId}) => !userId || emails.includes(util.normalizeEmail(userId.email)));
     return key.armor();
   }
+  
+  /**
+   * Remove signatures from source armored key which are not in compared armored key
+   * @param  {String} srcArmored armored key block to be filtered
+   * @param  {String} cmpArmored armored key block to be compared with
+   * @return {String, newSigs}   filtered {armored key block, list of new signatures}
+   */
+  async filterKeyBySignatures(srcArmored, cmpArmored) {
+    const {keys: [srcKey], err: srcErr} = await openpgp.key.readArmored(srcArmored);
+    if (srcErr) {
+      log.error('pgp', 'Failed to parse source PGP key:\n%s', srcArmored, srcErr);
+      util.throw(500, 'Failed to parse PGP key');
+    }
+    const {keys: [cmpKey], err: cmpErr} = await openpgp.key.readArmored(cmpArmored);
+    if (cmpErr) {
+      log.error('pgp', 'Failed to parse destination PGP key:\n%s', cmpArmored, cmpErr);
+      util.throw(500, 'Failed to parse PGP key');
+    }
+    
+    const newSigs=[];
+    if(cmpKey.hasSameFingerprintAs(srcKey)) {
+      await Promise.all(srcKey.users.map(async srcUser => {
+        await Promise.all(cmpKey.users.map(async dstUser => {
+          if ((srcUser.userId && dstUser.userId &&
+             (srcUser.userId.userid === dstUser.userId.userid)) ||
+             (srcUser.userAttribute && (srcUser.userAttribute.equals(dstUser.userAttribute)))) {
+            const source = srcUser.otherCertifications;
+            const dest = dstUser.otherCertifications;
+            for(let i = source.length-1; i >= 0; i--) {
+              const sourceSig = source[i];
+              if (!sourceSig.isExpired() && !dest.some(function(destSig) {
+                return util.equalsUint8Array(destSig.signature, sourceSig.signature);
+              })) {
+                // list new signatures
+                let userId = (srcUser.userId) ? srcUser.userId.userid : null; 
+                let userAttribute = (srcUser.userAttribute) ? srcUser.userAttribute : null;
+                newSigs.push({user: {userId: userId, userAttribute: userAttribute}, signature: Buffer.from(sourceSig.write()).toString('base64')});
+                // do not add new signatures
+                source.splice(i, 1);
+              }
+            }
+          }
+        }));
+      }));
+    }
+    return {armored: srcKey.armor(), newSigs: newSigs};
+  }
 
   /**
-   * Merge (update) armored key blocks
+   * Merge (update) armored key blocks without adding new signatures
    * @param  {String} srcArmored source amored key block
    * @param  {String} dstArmored destination armored key block
-   * @return {String}            merged armored key block
+   * @return {String}            merged amored key block
    */
   async updateKey(srcArmored, dstArmored) {
     const {keys: [srcKey], err: srcErr} = await openpgp.key.readArmored(srcArmored);
@@ -191,11 +238,63 @@ class PGP {
     if (dstErr) {
       log.error('pgp', 'Failed to parse destination PGP key for update:\n%s', dstArmored, dstErr);
       util.throw(500, 'Failed to parse PGP key');
-    }
+    }    
     await dstKey.update(srcKey);
     return dstKey.armor();
   }
+  
+  /**
+   * Add new signature to key
+   * @param  {String} publicKeyArmored source amored key block
+   * @param  {Object} signature        signature to add
+   * @return {String}                  updated armored key block
+   */
+  async addSignature(publicKeyArmored, {user, signature}) {
+    const {keys: [key], err: srcErr} = await openpgp.key.readArmored(publicKeyArmored);
+    const signaturePacket = await this.getSignatureFromBase64(signature);
+    if (srcErr) {
+      log.error('pgp', 'Failed to parse source PGP key for update:\n%s', publicKeyArmored, srcErr);
+      util.throw(500, 'Failed to parse PGP key');
+    }
+    for(const srcUser of key.users) {
+      if((srcUser.userId && user.userId === srcUser.userId.userid) || 
+         (user.userAttribute && user.userAttribute === srcUser.userAttribute)) {
+        if(!srcUser.otherCertifications.some(certSig => util.equalsUint8Array(certSig.signature, signaturePacket.signature))) {
+          srcUser.otherCertifications.push(signaturePacket);
+        }
+      }
+    }
+    
+    return key.armor();
+  }
+  
+  /**
+   * Get openpgp.packet.Signature object from base64 encoded signature
+   * @param  {String} signature         base64 encoded signature
+   * @return {openpgp.packet.Signature} Signature object
+   */
+  async getSignatureFromBase64(signature) {
+    const signaturePacket = new openpgp.packet.Signature();
+    signaturePacket.read(new Uint8Array(Buffer.from(signature, 'base64')));
+    return signaturePacket;
+  }
 
+  /**
+   * Returns primary user and most significant (latest valid) self signature
+   * - if multiple primary users exist, returns the one with the latest self signature
+   * - otherwise, returns the user with the latest self signature
+   * @return {Object}   The primary userId
+   */
+  async getPrimaryUser(publicKeyArmored) {
+    const {keys: [key], err: srcErr} = await openpgp.key.readArmored(publicKeyArmored);
+    if (srcErr) {
+      log.error('pgp', 'Failed to parse PGP key for getPrimaryUser:\n%s', publicKeyArmored, srcErr);
+      util.throw(500, 'Failed to parse PGP key');
+    }
+    const primaryUser = await key.getPrimaryUser();
+    return primaryUser;
+  }
+  
   /**
    * Remove user ID from armored key block
    * @param  {String} email            email of user ID to be removed

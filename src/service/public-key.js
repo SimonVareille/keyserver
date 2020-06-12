@@ -20,6 +20,7 @@
 const config = require('config');
 const util = require('./util');
 const tpl = require('../email/templates');
+const crypto = require('crypto');
 
 /**
  * Database documents have the format:
@@ -88,11 +89,28 @@ class PublicKey {
     if (verified) {
       key.userIds = await this._mergeUsers(verified.userIds, key.userIds, key.publicKeyArmored);
       // reduce new key to verified user IDs
-      const filteredPublicKeyArmored = await this._pgp.filterKeyByUserIds(key.userIds.filter(({verified}) => verified), key.publicKeyArmored);
+      let filteredPublicKeyArmored = await this._pgp.filterKeyByUserIds(key.userIds.filter(({verified}) => verified), key.publicKeyArmored);
+      // reduce new key to verified signatures and get new signatures
+      const {armored, newSigs} = await this._pgp.filterKeyBySignatures(filteredPublicKeyArmored, verified.publicKeyArmored);
+      filteredPublicKeyArmored = armored;
       // update verified key with new key
       key.publicKeyArmored = await this._pgp.updateKey(verified.publicKeyArmored, filteredPublicKeyArmored);
+      // store pending signatures in key and generate nounce for confirmation
+      if(newSigs.length) {
+        if(!verified.pendingSignatures)
+          key.pendingSignatures = {sigs: newSigs, nonce: util.random()};
+        else {
+          key.pendingSignatures = verified.pendingSignatures;
+          key.pendingSignatures.sigs = verified.pendingSignatures.sigs.concat(newSigs.filter(sourceSig => !verified.pendingSignatures.sigs.some(function(pendingSig) {
+              return pendingSig.signature === sourceSig.signature;
+            })));
+        }
+      }
+      
       // send mails to verify all user ids
       await this._sendVerifyEmail(key, origin, ctx);
+      // send mail to confirm all new signatures
+      await this._sendNewSigsEmail(key, origin, ctx);
       // store key in database 
       await this._persistKey(key);
     } else {
@@ -169,7 +187,7 @@ class PublicKey {
   _includeEmail(users, user) {
     return users.find(({email}) => email === user.email);
   }
-
+  
   /**
    * Send verification emails to the public keys user ids for verification.
    * If a primary email address is provided only one email will be sent.
@@ -183,7 +201,7 @@ class PublicKey {
       if (userId.notify && userId.notify === true) {
         // generate nonce for verification
         userId.nonce = util.random();
-        await this._email.send({template: tpl.verifyKey.bind(null, ctx), userId, keyId, origin, publicKeyArmored: userId.publicKeyArmored});
+        await this._email.send({template: tpl.verifyKey.bind(null, ctx), userId, keyId, data: userId, origin, publicKeyArmored: userId.publicKeyArmored});
       }
     }
   }
@@ -201,14 +219,30 @@ class PublicKey {
       if (userId.notify && userId.notify === true && util.isFromOrganisation(userId.email)) {
         // generate nonce for verification
         userId.nonce = util.random();
-        await this._email.send({template: tpl.verifyKey.bind(null, ctx), userId, keyId, origin, publicKeyArmored: userId.publicKeyArmored});
+        await this._email.send({template: tpl.verifyKey.bind(null, ctx), userId, keyId, data: userId, origin, publicKeyArmored: userId.publicKeyArmored});
       }
+    }
+  }
+  
+  /**
+   * Send email to the public key's primary user ids for confirmation
+   * of new signatures addition.
+   * @param {Object} key    key documents containg all the needed data
+   * @param {Object} origin the server's origin (required for email links)
+   * @param {Object} ctx    Context
+   * @return {Promise}
+   */
+  async _sendNewSigsEmail(key, origin, ctx) {
+    if(key.pendingSignatures && key.pendingSignatures.sigs.length){
+      let primaryUser = await this._pgp.getPrimaryUser(key.publicKeyArmored);
+      const userId = primaryUser.user.userId;
+      await this._email.send({template: tpl.checkNewSigs.bind(null, ctx), userId, keyId: key.keyId, data: {name: userId.name, sigsNb: key.pendingSignatures.sigs.length, nonce: key.pendingSignatures.nonce}, origin, publicKeyArmored: key.publicKeyArmored});
     }
   }
 
   /**
    * Persist the public key and its user ids in the database.
-   * @param {Object} key   public key parameters
+   * @param {Object} key        public key parameters
    * @return {Promise}
    */
   async _persistKey(key) {
@@ -291,6 +325,46 @@ class PublicKey {
     }, DB_TYPE);
     return {email};
   }
+  
+  /**
+   * Verify signatures by proving knowledge of the nonce.
+   * @param {string} keyId   Correspronding public key id
+   * @param {string} nonce   The verification nonce proving email address ownership
+   * @param {Array} sigs     The list of signatures to verify
+   * @param {Object} origin  The server's origin (required for email links)
+   * @param {Object} ctx     Context
+   * @return {Promise}       The email that has been verified
+   */
+  async verifySignatures({keyId, nonce, sigs}, origin, ctx) {
+    // look for verification nonce in database
+    const query = {keyId, 'pendingSignatures.nonce': nonce};
+    const key = await this._mongo.get(query, DB_TYPE);
+    if (!key) {
+      util.throw(404, 'Signatures not found on key');
+    }
+    
+    let publicKeyArmored = key.publicKeyArmored;
+    
+    for(const {user, signature} of key.pendingSignatures.sigs) {
+      // update armored key
+      let hash = crypto.createHash('md5');
+      hash.update(signature, 'base64');
+      hash = hash.digest('hex');
+      if(sigs.includes(hash)) {
+        publicKeyArmored = await this._pgp.addSignature(key.publicKeyArmored, {user, signature});
+        publicKeyArmored = await this._pgp.updateKey(key.publicKeyArmored, publicKeyArmored);
+      }
+    }
+    
+    key.pendingSignatures = null;
+    
+    await this._mongo.update(query, {
+      publicKeyArmored,
+      'pendingSignatures': null
+    }, DB_TYPE);
+    const email = (await this._pgp.getPrimaryUser(publicKeyArmored)).user.userId.email;
+    return {email};
+  }
 
   /**
    * Removes keys with the same email address
@@ -368,7 +442,60 @@ class PublicKey {
       email: uid.email,
       verified: uid.verified
     }));
+    if(key.pendingSignatures)
+      delete key.pendingSignatures.nonce
     return key;
+  }
+
+  /**
+   * Fetch all pending signatures of a public key from the database. Either the
+   * key fingerprint, id or the email address muss be provided.
+   * @param {string} keyId   Correspronding public key id
+   * @param {string} nonce   The verification nonce proving legitimity of the request
+   * @param {Object} ctx     Context
+   * @return {Map}           The list of userId and associated signatures
+   */
+  async getPendingSignatures({fingerprint, keyId, email, nonce}, ctx) {
+    // look for verified key
+    const userIds = email ? [{email}] : undefined;
+    const key = await this.getVerified({keyId, fingerprint, userIds});
+    if (!key) {
+      util.throw(404, ctx.__('key_not_found'));
+    }
+    if(!key.pendingSignatures)
+      util.throw(404, "No pending signatures");
+    if(key.pendingSignatures.nonce != nonce)
+      util.throw(403, "Invalid nonce");
+    
+    const signatures = new Map();
+
+    for(const {user, signature} of key.pendingSignatures.sigs) {
+      const signedUserID = user.userId;
+      
+      let hash = crypto.createHash('md5');
+      hash.update(signature, 'base64');
+      hash = hash.digest('hex')
+      
+      const signaturePacket = await this._pgp.getSignatureFromBase64(signature);
+      
+      const fingerprint = Buffer.from(signaturePacket.issuerFingerprint).toString('HEX');
+
+      const verified = await this.getVerified({fingerprint: fingerprint});
+
+      const issuerUID = (verified)? await this._pgp.getPrimaryUser(verified.publicKeyArmored): "[unknown identity]";
+
+      const sig = {issuerFingerprint: fingerprint,
+                   created: signaturePacket.created.toDateString(),
+                   userId: issuerUID,
+                   hash: hash
+                  };
+      if(!signatures.has(signedUserID)) {
+        signatures.set(signedUserID, []);
+      }
+      signatures.get(signedUserID).push(sig);
+    }
+
+    return signatures;
   }
 
   /**
@@ -391,7 +518,7 @@ class PublicKey {
     // send verification mails
     keyId = key.keyId; // get keyId in case request was by email
     for (const userId of key.userIds) {
-      await this._email.send({template: tpl.verifyRemove.bind(null, ctx), userId, keyId, origin});
+      await this._email.send({template: tpl.verifyRemove.bind(null, ctx), userId, keyId, data: userId, origin});
     }
   }
 

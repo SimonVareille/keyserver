@@ -53,12 +53,13 @@ class Email {
    * @param {Object} template   the email template function to use
    * @param {Object} userId     recipient user id object: { name:'Jon Smith', email:'j@smith.com', publicKeyArmored:'...' }
    * @param {string} keyId      key id of public key
+   * @param {Object} data       data used by template
    * @param {Object} origin     origin of the server
    * @yield {Object}            reponse object containing SMTP info
    */
-  async send({template, userId, keyId, origin, publicKeyArmored}) {
+  async send({template, userId, keyId, data, origin, publicKeyArmored}) {
     const compiled = template({
-      ...userId,
+      ...data,
       origin,
       keyId
     });

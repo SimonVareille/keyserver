@@ -178,8 +178,8 @@ class PGP {
   /**
    * Remove signatures from source armored key which are not in compared armored key
    * @param  {String} srcArmored armored key block to be filtered
-   * @param  {String} cmpArmored armored key block to be compare with
-   * @return {String, newSigs}   filterd armored key block, list of new signatures
+   * @param  {String} cmpArmored armored key block to be compared with
+   * @return {String, newSigs}   filtered {armored key block, list of new signatures}
    */
   async filterKeyBySignatures(srcArmored, cmpArmored) {
     const {keys: [srcKey], err: srcErr} = await openpgp.key.readArmored(srcArmored);
@@ -210,7 +210,7 @@ class PGP {
                 // list new signatures
                 let userId = (srcUser.userId) ? srcUser.userId.userid : null; 
                 let userAttribute = (srcUser.userAttribute) ? srcUser.userAttribute : null;
-                newSigs.push({user: {userId: userId, userAttribute: userAttribute}, signature: sourceSig});
+                newSigs.push({user: {userId: userId, userAttribute: userAttribute}, signature: Buffer.from(sourceSig.write()).toString('base64')});
                 // do not add new signatures
                 source.splice(i, 1);
               }
@@ -243,6 +243,42 @@ class PGP {
     return dstKey.armor();
   }
   
+  /**
+   * Add new signature to key
+   * @param  {String} publicKeyArmored source amored key block
+   * @param  {Object} signature        signature to add
+   * @return {String}                  updated armored key block
+   */
+  async addSignature(publicKeyArmored, {user, signature}) {
+    const {keys: [key], err: srcErr} = await openpgp.key.readArmored(publicKeyArmored);
+    const signaturePacket = await this.getSignatureFromBase64(signature);
+    if (srcErr) {
+      log.error('pgp', 'Failed to parse source PGP key for update:\n%s', publicKeyArmored, srcErr);
+      util.throw(500, 'Failed to parse PGP key');
+    }
+    for(const srcUser of key.users) {
+      if((srcUser.userId && user.userId === srcUser.userId.userid) || 
+         (user.userAttribute && user.userAttribute === srcUser.userAttribute)) {
+        if(!srcUser.otherCertifications.some(certSig => util.equalsUint8Array(certSig.signature, signaturePacket.signature))) {
+          srcUser.otherCertifications.push(signaturePacket);
+        }
+      }
+    }
+    
+    return key.armor();
+  }
+  
+  /**
+   * Get openpgp.packet.Signature object from base64 encoded signature
+   * @param  {String} signature         base64 encoded signature
+   * @return {openpgp.packet.Signature} Signature object
+   */
+  async getSignatureFromBase64(signature) {
+    const signaturePacket = new openpgp.packet.Signature();
+    signaturePacket.read(new Uint8Array(Buffer.from(signature, 'base64')));
+    return signaturePacket;
+  }
+
   /**
    * Returns primary user and most significant (latest valid) self signature
    * - if multiple primary users exist, returns the one with the latest self signature

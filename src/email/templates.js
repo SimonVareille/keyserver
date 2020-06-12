@@ -18,12 +18,12 @@ function verifyRemove(ctx, {name, email, nonce, origin, keyId}) {
   };
 }
 
-function confirmNewSigs(ctx, {name, sigsNb, nonce, origin, keyId}) {
-  const link = `${util.url(origin)}/api/v1/key?op=confirmSignatures&keyId=${keyId}&nonce=${nonce}`;
+function checkNewSigs(ctx, {name, sigsNb, nonce, origin, keyId}) {
+  const link = `${util.url(origin)}/api/v1/key?op=checkSignatures&keyId=${keyId}&nonce=${nonce}`;
   return {
-    subject: ctx.__('confirm_signatures_subject'),
-    text: ctx.__('confirm_signatures_text', [name, sigsNb, link, origin.host])
+    subject: ctx.__('check_signatures_subject'),
+    text: ctx.__('check_signatures_text', [name, sigsNb, link, origin.host])
   };
 }
 
-module.exports = {verifyKey, verifyRemove, confirmNewSigs};
+module.exports = {verifyKey, verifyRemove, checkNewSigs};

@@ -33,7 +33,7 @@
     "nodemailer": "6.3.0",
     "openpgp": "4.5.5",
     "winston": "3.2.1",
-    "winston-papertrail": "1.0.5",
+    "winston-papertrail": "1.0.5"
   },
   "devDependencies": {
     "bootstrap": "^3.4.1",

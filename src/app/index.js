@@ -62,7 +62,7 @@ router.get('/manage.html', ctx => ctx.render('manage'));
 // HKP and REST api routes
 router.post('/pks/add', ctx => hkp.add(ctx));
 router.get('/pks/lookup', ctx => hkp.lookup(ctx));
-router.post('/api/v1/key', ctx => rest.create(ctx));
+router.post('/api/v1/key', ctx => rest.postHandler(ctx));
 router.get('/api/v1/key', ctx => rest.query(ctx));
 router.del('/api/v1/key', ctx => rest.remove(ctx));
 

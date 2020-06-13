@@ -68,7 +68,7 @@ class PGP {
     }
 
     // check for at least one valid user id
-    const userIds = await this.parseUserIds(key.users, primaryKey, verifyDate);
+    const {userIds, status} = await this.parseUserIds(key.users, primaryKey, verifyDate);
     if (!userIds.length) {
       if (status == 1) {
         util.throw(400, 'Invalid PGP key: no user ID comes from a valid organisation');
@@ -122,7 +122,7 @@ class PGP {
 
   /**
    * Parse an array of user ids and verify signatures
-   * @param  {Array} users   A list of openpgp.js user objects
+   * @param  {Array} users      A list of openpgp.js user objects
    * @param {Object} primaryKey The primary key packet of the key
    * @param {Date} verifyDate   Verify user IDs at this point in time
    * @return {Array, integer}   An array of user id objects and a satus indicator

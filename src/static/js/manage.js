@@ -49,5 +49,54 @@
     $('#' + region + ' .alert-' + outcome + ' span').text(text);
     $('#' + region + ' .alert-' + outcome).removeClass('hidden');
   }
+  
+  $('#drop_zone').on('drop',
+    function(ev) {
+      // Prevent default behavior (Prevent file from being opened)
+      ev.stopPropagation();
+      ev.preventDefault();
+      $('#addKey .alert').addClass('hidden');
+      if(ev.originalEvent.dataTransfer.files[0].type != "text/plain") {
+        alert('addKey', 'danger', 'You must import an ascii-armored key file!');
+        return;
+      }      
+      handleFiles(ev.originalEvent.dataTransfer.files);
+  });
+  $('#drop_zone').on('dragover', 
+    function(ev) {
+      // Prevent default behavior (Prevent file from being opened)
+      ev.stopPropagation();
+      ev.preventDefault();
+      ev.originalEvent.dataTransfer.dropEffect = 'copy';
+  });
+  $('#drop_zone').on('dragenter', 
+    function(ev) {
+      // Prevent default behavior (Prevent file from being opened)
+      ev.stopPropagation();
+      ev.preventDefault();
+      ev.originalEvent.dataTransfer.dropEffect = 'copy';
+  });
+
+  $('#fileSelect').click(function() {
+    $('#file-selector').click();
+  });
+
+  $('#file-selector').change(function() {
+    $('#addKey .alert').addClass('hidden');
+    handleFiles(this.files);
+  });
+  
+  function handleFiles(files) {
+    if(files.length > 1) {
+      alert('addKey', 'danger', 'You must import a single file!');
+      return;
+    }
+    const file = files[0];
+    const reader = new FileReader();
+    reader.onload = function(){
+      $('#addKey textarea').val(reader.result);
+    } 
+    reader.readAsText(file);
+   }
 
 }(jQuery));

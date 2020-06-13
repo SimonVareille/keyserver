@@ -24,7 +24,9 @@
         <div class="progress-bar progress-bar-striped active" role="progressbar"></div>
       </div>
       <form action="/pks/add" method="post">
-        <p><textarea class="form-control" name="keytext" rows="5" spellcheck="false" placeholder="Paste PGP PUBLIC KEY BLOCK here ..." required></textarea></p>
+        <p><textarea id="drop_zone" class="form-control ui-droppable" name="keytext" rows="5" spellcheck="false" placeholder="Drag a single ascii-armored key file here or paste PGP PUBLIC KEY BLOCK here ..." required></textarea></p>
+        <input type="file" id="file-selector" accept="text/plain" style="display:none">
+        <p>Or <button type="button" id="fileSelect">select a file</button> </p>
         <input class="btn btn-primary btn-lg" type="submit" value="Upload">
       </form>
       <hr>

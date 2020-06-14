@@ -136,7 +136,9 @@ class HKP {
       ctx.body = `info:${VERSION}:${COUNT}\npub:${fp}:${algo}:${key.keySize}:${created}::\n`;
 
       for (const uid of key.userIds) {
-        ctx.body += `uid:${encodeURIComponent(`${uid.name} <${uid.email}>`)}:::\n`;
+        if(uid.verified) {
+          ctx.body += `uid:${encodeURIComponent(`${uid.name} <${uid.email}>`)}:::\n`;
+        }
       }
     }
   }

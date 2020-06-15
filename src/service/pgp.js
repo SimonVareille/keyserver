@@ -48,7 +48,7 @@ class PGP {
       log.error('pgp', 'Failed to parse PGP key:\n%s', publicKeyArmored, error);
       util.throw(500, 'Failed to parse PGP key');
     } else if (!r.keys || r.keys.length !== 1 || !r.keys[0].primaryKey) {
-      util.throw(400, 'Invalid PGP key: only one key can be uploaded');
+      util.throw(501, 'Invalid PGP key: only one key can be uploaded');
     }
 
     // verify primary key
@@ -64,14 +64,14 @@ class PGP {
     const keyId = primaryKey.getKeyId().toHex();
     const fingerprint = primaryKey.getFingerprint();
     if (!util.isKeyId(keyId) || !util.isFingerPrint(fingerprint)) {
-      util.throw(400, 'Invalid PGP key: only v4 keys are accepted');
+      util.throw(501, 'Invalid PGP key: only v4 keys are accepted');
     }
 
     // check for at least one valid user id
     const {userIds, status} = await this.parseUserIds(key.users, primaryKey, verifyDate);
     if (!userIds.length) {
       if (status == 1) {
-        util.throw(400, 'Invalid PGP key: no user ID comes from a valid organisation');
+        util.throw(403, 'Invalid PGP key: no user ID comes from a valid organisation');
       }
       else {
         util.throw(400, 'Invalid PGP key: invalid user IDs');

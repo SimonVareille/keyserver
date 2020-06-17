@@ -22,7 +22,7 @@ function checkNewSigs(ctx, {name, sigsNb, nonce, origin, keyId}) {
   const link = `${util.url(origin)}/api/v1/key?op=checkSignatures&keyId=${keyId}&nonce=${nonce}`;
   return {
     subject: ctx.__('check_signatures_subject'),
-    text: ctx.__('check_signatures_text', [name, sigsNb, link, origin.host])
+    text: ctx.__n('check_signatures_text', sigsNb, [name, sigsNb, link, origin.host])
   };
 }
 

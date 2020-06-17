@@ -8,5 +8,5 @@
   "verify_removal_text": "Hello {0},\n\nplease verify removal of your email address {1} from our key server ({2}) by clicking on the following link:\n\n{3}\n\nGreetings from the Mailvelope Team",
   "removal_success": "Email address {0} removed from the key directory",
   "check_signatures_subject": "Confirm new signatures",
-  "check_signatures_text": "Hello {0},\n\n{1} new signature(s) have been uploaded to your keys on our keyserver ({3}) ! Please select the ones you want to add by clicking on the following link:\n\n{2}\n\nGreetings from the Mailvelope Team"
+  "check_signatures_text": {"one":"Hello {0},\n\n{1} new signature has been uploaded to your keys on our keyserver ({3}) ! Please select it if you want to add it by clicking on the following link:\n\n{2}\n\nGreetings from the Mailvelope Team", "other": "Hello {0},\n\n{1} new signatures have been uploaded to your keys on our keyserver ({3}) ! Please select the ones you want to add by clicking on the following link:\n\n{2}\n\nGreetings from the Mailvelope Team"}
 }

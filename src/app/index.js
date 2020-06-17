@@ -41,7 +41,8 @@ render(app, {
 locales(app, {
   defaultLocale: 'en',
   dirs: [path.join(__dirname, '../../locales')],
-  localeAlias: {'de-DE': 'de', 'de-de': 'de', 'de-AT': 'de', 'de-at': 'de', 'de-CH': 'de', 'de-ch': 'de', 'de-LI': 'de', 'de-li': 'de'},
+  localeAlias: {'de-DE': 'de', 'de-de': 'de', 'de-AT': 'de', 'de-at': 'de', 'de-CH': 'de', 'de-ch': 'de', 'de-LI': 'de', 'de-li': 'de',
+                'fr-fr': 'fr', 'fr-FR': 'fr'},
   writeCookie: false
 });
 
@@ -51,6 +52,7 @@ let rest;
 app.use(async (ctx, next) => {
   ctx.state = ctx.state || {};
   ctx.state.__ = ctx.__.bind(ctx);
+  ctx.state.__n = ctx.__n.bind(ctx);
   await next();
 });
 

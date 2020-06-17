@@ -1,0 +1,12 @@
+{
+  "key_not_found": "Clef non trouvée",
+  "verify_key_subject": "Vérifiez votre adresse mail",
+  "verify_key_text": "Bonjour {0},\n\nVeuillez vérifier votre adresse mail {1} en cliquant sur le lien suivant :\n\n{2}\n\nAprès vérification de votre adresse mail, Votre clef publique sera disponible dans notre annuaire de clefs.\n\nVous trouverez plus d'infos sur {3}.\n\nBisous sur les tentacules !",
+  "verify_success_header": "Adresse mail {0} vérifiée avec succès",
+  "verify_success_link": "Votre clef publique OpenPGP est maintenant disponible à l'adresse suivante :",
+  "verify_removal_subject": "Demande de suppression de clef",
+  "verify_removal_text": "Bonjour {0},\n\nVeuillez confirmer la suppression de votre adresse mail ({1}) de notre serveur de clef ({2}) en cliquant sur le lien suivant :\n\n{3}\n\nBisous sur les tentacules !",
+  "removal_success": "L'adresse mail {0} a été supprimée du serveur",
+  "check_signatures_subject": "Confirmez de nouvelles signatures",
+  "check_signatures_text": {"one":"Bonjour {0},\n\nUne nouvelle signature a été ajoutée à votre clef sur notre serveur ({3}) ! Veuillez la sélectionner en cliquant sur le lien suivant si vous voulez la conserver :\n\n{2}\n\nBisous sur les tentacules !", "other": "Bonjour {0},\n\n{1} nouvelles signatures ont été ajoutées à votre clef sur notre serveur ({3}) ! Veuillez sélectionner celles que vous voulez conserver en cliquant sur le lien suivant :\n\n{2}\n\nBisous sur les tentacules !"}
+}
